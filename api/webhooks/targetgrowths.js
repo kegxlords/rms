@@ -1,7 +1,7 @@
 /**
  * TargetGrowths Webhook Handler
  * Trusts webhook payload directly - gateway controls when webhooks are sent
- * Includes fallback processing if RPC fails.
+ * Includes fallback processing if RPC fails, with explicit upsert conflict handling.
  */
 
 import supabaseAdmin from '../../lib/supabase.js';
@@ -21,10 +21,9 @@ export default async function handler(req, res) {
 
   try {
     const payload = parseWebhookBody(req.body);
-    console.log('[TG-WEBHOOK-RECEIVED]', payload);
+    console.log('[TG-WEBHOOK-RECEIVED]', JSON.stringify(payload, null, 2));
 
     // FIX: Check root status first. If root says 'success', trust it.
-    // Target Growth sometimes sends root: "success" but data.payment_status: "initiated"
     let status = webhookStatus(payload);
     if (payload?.status && isSuccessfulStatus(payload.status)) {
       console.log('[TG-WEBHOOK] Root status is success, overriding nested status:', status, '-> success');
@@ -88,13 +87,24 @@ export default async function handler(req, res) {
           .eq('user_id', deposit.user_id)
           .single();
 
-        const newBalance = (wallet?.balance || 0) + Number(deposit.amount);
+        const currentBalance = wallet?.balance || 0;
+        const newBalance = currentBalance + Number(deposit.amount);
         
-        await supabaseAdmin.from('wallets').upsert({
+        console.log(`[TG-WEBHOOK] Manual Fallback: Updating wallet for ${deposit.user_id}. Current: ${currentBalance}, Adding: ${deposit.amount}, New: ${newBalance}`);
+
+        // ✅ CRITICAL FIX: Explicitly define onConflict to guarantee creation if missing
+        const { error: walletError } = await supabaseAdmin.from('wallets').upsert({
           user_id: deposit.user_id,
           balance: newBalance,
           updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'user_id' });
+
+        if (walletError) {
+          console.error('[TG-WEBHOOK] ❌ Wallet upsert failed:', walletError);
+          return res.status(500).json({ error: 'Failed to update wallet balance' });
+        }
+
+        console.log('[TG-WEBHOOK] ✅ Wallet updated successfully via upsert');
 
         await supabaseAdmin.from('transactions').insert({
           user_id: deposit.user_id,
@@ -119,6 +129,7 @@ export default async function handler(req, res) {
         return res.status(200).json({
           success: true,
           message: 'Deposit completed (manual fallback)',
+          newBalance,
           amount: deposit.amount
         });
       }
@@ -219,17 +230,19 @@ async function handleDeposit(identifier, amount, status, payload) {
       .eq('user_id', deposit.user_id)
       .single();
 
-    const newBalance = Number(wallet?.balance || 0) + Number(amount);
+    const currentBalance = wallet?.balance || 0;
+    const newBalance = currentBalance + Number(amount);
 
+    // ✅ CRITICAL FIX: Explicitly define onConflict
     await supabaseAdmin
       .from('wallets')
       .upsert({
         user_id: deposit.user_id,
         balance: newBalance,
         updated_at: new Date().toISOString()
-      });
+      }, { onConflict: 'user_id' });
 
-    console.log(`[TG-DEPOSIT] ✅ Wallet updated: ${wallet?.balance} → ${newBalance}`);
+    console.log(`[TG-DEPOSIT] ✅ Wallet updated: ${currentBalance} → ${newBalance}`);
 
     await supabaseAdmin
       .from('transactions')
@@ -306,13 +319,15 @@ async function handleWithdrawal(identifier, amount, status, payload) {
       .single();
 
     const refundAmount = Number(amount);
-    const newBalance = Number(wallet?.balance || 0) + refundAmount;
+    const currentBalance = wallet?.balance || 0;
+    const newBalance = currentBalance + refundAmount;
 
+    // ✅ CRITICAL FIX: Explicitly define onConflict
     await supabaseAdmin.from('wallets').upsert({
       user_id: withdrawal.user_id,
       balance: newBalance,
       updated_at: new Date().toISOString()
-    });
+    }, { onConflict: 'user_id' });
 
     await supabaseAdmin.from('transactions').insert({
       user_id: withdrawal.user_id,
@@ -330,6 +345,6 @@ async function handleWithdrawal(identifier, amount, status, payload) {
       updated_at: new Date().toISOString()
     }).eq('id', withdrawal.id);
 
-    console.log(`[TG-WITHDRAWAL] ❌ Payout failed. Refunded ₦${refundAmount} to user ${withdrawal.user_id}`);
+    console.log(`[TG-WITHDRAWAL] ❌ Payout failed. Refunded ₦${refundAmount} to user ${withdrawal.user_id}. New balance: ${newBalance}`);
   }
 }
