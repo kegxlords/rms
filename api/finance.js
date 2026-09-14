@@ -5,7 +5,7 @@
 
 import supabaseAdmin from '../lib/supabase.js';
 import { verifyUser } from '../lib/auth.js';
-import { initiatePayment, initiateTransfer } from '../lib/targetgrowths.js';
+import { initiatePayment, initiateTransfer, getCredentials } from '../lib/targetgrowths.js';
 
 export default async function handler(req, res) {
   const action = req.query.action || req.body?.action;
