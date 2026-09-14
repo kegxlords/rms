@@ -254,13 +254,30 @@ async function initiateTargetGrowthDeposit(req, res) {
 
   const { amount, email, full_name } = req.body;
   const numAmount = Number(amount);
-  if (!numAmount || numAmount < 100) return res.status(400).json({ error: 'Minimum deposit is ₦100' });
+  
+  // FIX 1: Minimum amount for Gateway 21 (Eazypay NGN) is 600
+  if (!numAmount || numAmount < 600) {
+    return res.status(400).json({ error: 'Minimum deposit is ₦600 for Target Growth' });
+  }
 
-  const identifier = `TGD${user.id.replace(/-/g, '').slice(0, 14)}${Date.now().toString(36).slice(-4)}`.toUpperCase();
+  // FIX 2: Identifier MUST be max 20 characters
+  // Format: TGD + 8 chars of user ID + 4 chars of timestamp = 15 chars (well under 20)
+  const shortUserId = user.id.replace(/-/g, '').slice(0, 8);
+  const shortTime = Date.now().toString(36).slice(-4).toUpperCase();
+  const identifier = `TGD${shortUserId}${shortTime}`; // Max 15 chars
+  
   const reference = `TG_DEP_${identifier}`;
 
   const { error: insertError } = await supabaseAdmin.from('deposits').insert({
-    user_id: user.id, amount: numAmount, reference, status: 'pending', method: 'targetgrowths', provider: 'targetgrowths', provider_identifier: identifier, provider_status: 'initiated', created_at: new Date().toISOString()
+    user_id: user.id, 
+    amount: numAmount, 
+    reference, 
+    status: 'pending', 
+    method: 'targetgrowths', 
+    provider: 'targetgrowths', 
+    provider_identifier: identifier, 
+    provider_status: 'initiated', 
+    created_at: new Date().toISOString()
   });
     
   if (insertError) return res.status(500).json({ error: insertError.message });
@@ -269,11 +286,20 @@ async function initiateTargetGrowthDeposit(req, res) {
     const origin = getAppUrl(req);
     const ipnUrl = `${origin}/api/webhooks/targetgrowths`;
     
+    // FIX 3: Truncate name and email to max 30 characters to satisfy Target Growth API
+    const safeName = (full_name || 'RMS User').substring(0, 30).trim();
+    const safeEmail = (email || 'user@example.com').substring(0, 30).trim();
+
     const providerResponse = await initiatePayment({
-      identifier, amount: numAmount, details: `RMS Wallet Deposit`, ipnUrl,
+      identifier, 
+      amount: numAmount, 
+      details: `RMS Wallet Deposit`, 
+      ipnUrl,
       successUrl: `${origin}/deposit-success.html?ref=${encodeURIComponent(reference)}`,
       cancelUrl: `${origin}/deposit.html?cancelled=true`,
-      siteLogo: `${origin}/logo.png`, customerName: full_name || 'RMS User', customerEmail: email || 'user@example.com'
+      siteLogo: `${origin}/logo.png`, 
+      customerName: safeName, 
+      customerEmail: safeEmail
     });
 
     const checkoutUrl = providerResponse?.url || providerResponse?.checkout_url || providerResponse?.payment_url;
@@ -282,7 +308,10 @@ async function initiateTargetGrowthDeposit(req, res) {
     if (!checkoutUrl) throw new Error('Target Growth did not return a checkout URL');
 
     await supabaseAdmin.from('deposits').update({
-      provider_reference: providerRef, provider_status: 'checkout_created', provider_response: providerResponse, updated_at: new Date().toISOString()
+      provider_reference: providerRef, 
+      provider_status: 'checkout_created', 
+      provider_response: providerResponse, 
+      updated_at: new Date().toISOString()
     }).eq('reference', reference);
 
     return res.status(200).json({ ok: true, reference, identifier, checkout_url: checkoutUrl });
@@ -290,7 +319,10 @@ async function initiateTargetGrowthDeposit(req, res) {
   } catch (e) {
     console.error('[TG Deposit Initiate Error]', e);
     await supabaseAdmin.from('deposits').update({
-      status: 'rejected', provider_status: 'initiation_failed', provider_error: e.message, updated_at: new Date().toISOString()
+      status: 'rejected', 
+      provider_status: 'initiation_failed', 
+      provider_error: e.message, 
+      updated_at: new Date().toISOString()
     }).eq('reference', reference);
     
     return res.status(502).json({ error: e.message || 'Could not start payment' });
