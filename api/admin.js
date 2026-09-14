@@ -50,11 +50,8 @@ async function getDashboardStats(req, res) {
   ]);
 
   const errors = [
-    usersResult.error,
-    depositsResult.error,
-    pendingDepositsResult.error,
-    withdrawalsResult.error,
-    pendingWithdrawalsResult.error
+    usersResult.error, depositsResult.error, pendingDepositsResult.error,
+    withdrawalsResult.error, pendingWithdrawalsResult.error
   ].filter(Boolean);
 
   if (errors.length) {
@@ -62,14 +59,8 @@ async function getDashboardStats(req, res) {
     return res.status(500).json({ error: 'Failed to load dashboard statistics' });
   }
 
-  const totalDeposits = (depositsResult.data || []).reduce(
-    (sum, row) => sum + Number(row.amount || 0),
-    0
-  );
-  const totalWithdrawals = (withdrawalsResult.data || []).reduce(
-    (sum, row) => sum + Number(row.net_amount ?? row.amount ?? 0),
-    0
-  );
+  const totalDeposits = (depositsResult.data || []).reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const totalWithdrawals = (withdrawalsResult.data || []).reduce((sum, row) => sum + Number(row.net_amount ?? row.amount ?? 0), 0);
 
   return res.status(200).json({
     users: usersResult.count || 0,
@@ -92,7 +83,7 @@ async function getDeposits(req, res) {
 }
 
 // ==========================================
-// WITHDRAWALS (Fee calculation on approval)
+// WITHDRAWALS
 // ==========================================
 async function getWithdrawals(req, res) {
   const status = req.query.status || 'pending';
@@ -116,10 +107,21 @@ const TG_BANK_CODES = {
   'moniepoint': 'NGR50515', 'vfd': 'NGR566'
 };
 
+// ==========================================
+// PROCESS WITHDRAWAL (ENHANCED LOGGING)
+// ==========================================
 async function processWithdrawal(req, res) {
   const { withdrawal_id, act, note } = req.body;
-  const { data: w } = await supabaseAdmin.from('withdrawals').select('*').eq('id', withdrawal_id).single();
-  if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
+  console.log('[ADMIN] Processing withdrawal request:', { withdrawal_id, act, note });
+  
+  const { data: w, error: wError } = await supabaseAdmin.from('withdrawals').select('*').eq('id', withdrawal_id).single();
+  if (wError || !w) return res.status(404).json({ error: 'Withdrawal not found' });
+  
+  console.log('[ADMIN] Withdrawal data:', {
+    id: w.id, status: w.status, bank_name: w.bank_name, bank_id: w.bank_id,
+    account_number: w.account_number, account_name: w.account_name, amount: w.amount
+  });
+
   if (w.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
 
   if (act === 'reject') {
@@ -132,17 +134,27 @@ async function processWithdrawal(req, res) {
 
   if (act === 'approve') {
     const bankId = TG_BANK_CODES[w.bank_name?.toLowerCase()] || w.bank_id;
-    if (!bankId) return res.status(400).json({ error: 'Invalid bank code for Target Growth' });
+    console.log('[ADMIN] Resolved Bank ID:', bankId, 'from bank_name:', w.bank_name);
+    
+    if (!bankId) {
+      return res.status(400).json({ 
+        error: `Invalid bank code. Bank name: "${w.bank_name}". Supported: ${Object.keys(TG_BANK_CODES).join(', ')}` 
+      });
+    }
 
     const { data: settings } = await supabaseAdmin.from('site_settings').select('key, value').eq('key', 'withdrawal_fee_percentage');
     const feePercent = Number(settings?.[0]?.value || 0);
     const feeAmount = Number(w.amount) * (feePercent / 100);
     const netAmount = Number(w.amount) - feeAmount;
 
-    const identifier = `TGW${String(w.id).replace(/-/g, '').slice(0, 12)}${Date.now().toString(36).toUpperCase()}`;
+    // STRICT FIX: Ensure identifier is max 20 chars (Target Growth requirement)
+    const shortId = String(w.id).replace(/-/g, '').slice(0, 10);
+    const shortTime = Date.now().toString(36).slice(-4).toUpperCase();
+    const identifier = `TGW${shortId}${shortTime}`; // Max 3 + 10 + 4 = 17 chars
 
-    // Atomically claim the pending withdrawal before contacting the gateway.
-    // A second admin request will update zero rows and cannot submit twice.
+    console.log('[ADMIN] Generated Identifier:', identifier, 'Length:', identifier.length);
+
+    // Atomically claim the pending withdrawal
     const { data: claimed, error: claimError } = await supabaseAdmin
       .from('withdrawals')
       .update({
@@ -164,21 +176,28 @@ async function processWithdrawal(req, res) {
     }
 
     if (!claimed) {
-      return res.status(409).json({
-        error: 'Withdrawal is already being processed or has already been approved'
-      });
+      return res.status(409).json({ error: 'Withdrawal is already being processed or has already been approved' });
     }
 
     try {
-      const provider = await initiateTransfer({
-        identifier, amount: netAmount, bankId, recipient: w.account_number,
-        accountName: w.account_name, ipnUrl: `https://rms888.vercel.app/api/webhooks/targetgrowths`, customerEmail: 'admin@rms.com'
-      });
+      const transferPayload = {
+        identifier, 
+        amount: netAmount, 
+        bankId, 
+        recipient: w.account_number,
+        accountName: w.account_name, 
+        ipnUrl: `https://rms888.vercel.app/api/webhooks/targetgrowths`, 
+        customerEmail: w.customer_email || 'admin@rms.com'
+      };
+      console.log('[ADMIN] Calling initiateTransfer with payload:', transferPayload);
+
+      const provider = await initiateTransfer(transferPayload);
+      console.log('[ADMIN] initiateTransfer response:', provider);
 
       const { error: providerUpdateError } = await supabaseAdmin
         .from('withdrawals')
         .update({
-          provider_reference: provider?.transaction_ref,
+          provider_reference: provider?.transaction_ref || provider?.ref_trx,
           provider_status: 'provider_pending',
           provider_response: provider
         })
@@ -187,40 +206,30 @@ async function processWithdrawal(req, res) {
 
       if (providerUpdateError) {
         console.error('[ADMIN] Withdrawal provider result save failed:', providerUpdateError);
-        return res.status(500).json({
-          error: 'Gateway accepted the transfer, but its response could not be saved. Do not resubmit.'
-        });
+        return res.status(500).json({ error: 'Gateway accepted the transfer, but its response could not be saved.' });
       }
 
-      await supabaseAdmin
-        .from('transactions')
-        .update({ status: 'approved' })
-        .eq('reference', `wd_${w.id}`);
+      await supabaseAdmin.from('transactions').update({ status: 'approved' }).eq('reference', `wd_${w.id}`);
 
       return res.json({ ok: true, action: 'approved', status: 'provider_pending', netAmount });
     } catch (e) {
-      // Do not return the row to pending: the gateway may have accepted the
-      // request even if the HTTP response failed. Keep it out of the queue.
-      await supabaseAdmin
-        .from('withdrawals')
-        .update({
-          status: 'approved',
-          provider_status: 'gateway_error',
-          provider_response: { error: e.message },
-          processed_at: new Date().toISOString()
-        })
-        .eq('id', w.id)
-        .eq('status', 'approved');
+      console.error('[ADMIN] Gateway transfer attempt failed:', e);
+      await supabaseAdmin.from('withdrawals').update({
+        status: 'approved',
+        provider_status: 'gateway_error',
+        provider_response: { error: e.message, details: e.providerResponse },
+        processed_at: new Date().toISOString()
+      }).eq('id', w.id).eq('status', 'approved');
 
       return res.status(502).json({
-        error: 'Gateway transfer attempt failed or timed out. Withdrawal remains approved; do not resubmit automatically.'
+        error: 'Gateway transfer attempt failed. Error: ' + e.message
       });
     }
   }
 }
 
 // ==========================================
-// USERS (Search fixed)
+// USERS
 // ==========================================
 async function getUsers(req, res) {
   const search = (req.query.search || '').trim();
@@ -291,12 +300,13 @@ async function adminGenerateGiftCode(req, res) {
     max_uses: Number(max_uses), 
     used_count: 0,
     is_active: true, 
-    created_by: null,  // ✅ FIXED: Use NULL instead of 'admin'
+    created_by: null,
     expires_at: expiresAt.toISOString()
   });
   if (error) return res.status(500).json({ error: error.message });
   return res.json({ ok: true, code });
 }
+
 // ==========================================
 // MESSAGES
 // ==========================================
@@ -308,7 +318,7 @@ async function sendMessage(req, res) {
 }
 
 // ==========================================
-// WEALTH PACKAGES (CRUD + Dates)
+// WEALTH PACKAGES
 // ==========================================
 async function getWealthPackages(req, res) {
   const { data } = await supabaseAdmin.from('wealth_packages').select('*').order('investment_amount', { ascending: true });
