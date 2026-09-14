@@ -248,22 +248,25 @@ async function createWithdrawal(req, res) {
 // TARGET GROWTH DEPOSIT
 // ==========================================
 
-async function initiateTargetGrowthDeposit(req, res) {
+    async function initiateTargetGrowthDeposit(req, res) {
   const user = await verifyUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
   const { amount, email, full_name } = req.body;
   const numAmount = Number(amount);
   
-  // Minimum amount for Gateway 21 (Eazypay NGN) is 600
+  // STRICT VALIDATION per Target Growth docs
   if (!numAmount || numAmount < 600) {
-    return res.status(400).json({ error: 'Minimum deposit is 600' });
+    return res.status(400).json({ error: 'Minimum deposit is ₦600' });
+  }
+  if (numAmount > 9999999) {
+    return res.status(400).json({ error: 'Maximum deposit is ₦9,999,999' });
   }
 
-  // Create short identifier (max 20 chars per TG docs)
-  const shortUserId = user.id.replace(/-/g, '').slice(0, 8);
+  // Create SHORT identifier (max 20 chars per TG docs)
+  const shortUserId = user.id.replace(/-/g, '').slice(0, 10);
   const shortTime = Date.now().toString(36).slice(-4).toUpperCase();
-  const identifier = `TGD${shortUserId}${shortTime}`;
+  const identifier = `TGD${shortUserId}${shortTime}`.toUpperCase(); // Max 17 chars
   
   const reference = `TG_DEP_${identifier}`;
 
@@ -281,42 +284,48 @@ async function initiateTargetGrowthDeposit(req, res) {
   });
     
   if (insertError) {
-    console.error('[TG] DB insert error:', insertError);
+    console.error('[TG-DEPOSIT] DB insert error:', insertError);
     return res.status(500).json({ error: insertError.message });
   }
 
   try {
     const origin = getAppUrl(req);
     
-    // Prepare parameters EXACTLY as per TG documentation
-    const paymentData = {
-      identifier: identifier,
-      currency: 'NGN',  // REQUIRED - must be uppercase
-      amount: numAmount,
-      details: 'RMS Wallet Deposit',
-      gateway_id: '21',  // REQUIRED for NGN (Eazypay)
-      fee_bearer: 'merchant',  // Optional but recommended
-      ipn_url: `${origin}/api/webhooks/targetgrowths`,
-      success_url: `${origin}/deposit-success.html?ref=${encodeURIComponent(reference)}`,
-      cancel_url: `${origin}/deposit.html?cancelled=true`,
-      site_logo: `${origin}/logo.png`,
-      checkout_theme: 'light',
-      customer_name: (full_name || 'RMS User').substring(0, 30).trim(),
-      customer_email: (email || 'user@example.com').substring(0, 30).trim()
-    };
-
-    console.log('[TG] Sending payment data:', JSON.stringify(paymentData, null, 2));
-
-    // Call Target Growth API
+    // Get credentials
     const { publicKey } = getCredentials();
-    const body = new URLSearchParams();
     
-    Object.entries({ ...paymentData, public_key: publicKey }).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== "") {
-        body.set(key, String(value));
-      }
+    // STRICT parameter validation per TG docs
+    const safeName = (full_name || 'RMS User').trim().substring(0, 30);
+    const safeEmail = (email || 'user@example.com').trim().substring(0, 30);
+    
+    console.log('[TG-DEPOSIT] Initiating payment with params:', {
+      identifier,
+      currency: 'NGN',
+      amount: numAmount,
+      gateway_id: '21',
+      safeName,
+      safeEmail,
+      ipnUrl: `${origin}/api/webhooks/targetgrowths`
     });
 
+    // Build request body EXACTLY as per TG documentation
+    const body = new URLSearchParams();
+    body.set('public_key', publicKey);
+    body.set('identifier', identifier);
+    body.set('currency', 'NGN'); // REQUIRED - uppercase
+    body.set('amount', numAmount.toFixed(2));
+    body.set('details', 'RMS Wallet Deposit');
+    body.set('gateway_id', '21'); // Eazypay for NGN
+    body.set('fee_bearer', 'merchant');
+    body.set('ipn_url', `${origin}/api/webhooks/targetgrowths`);
+    body.set('success_url', `${origin}/deposit-success.html?ref=${encodeURIComponent(reference)}`);
+    body.set('cancel_url', `${origin}/deposit.html?cancelled=true`);
+    body.set('site_logo', `${origin}/logo.png`);
+    body.set('checkout_theme', 'light');
+    body.set('customer_name', safeName);
+    body.set('customer_email', safeEmail);
+
+    // Call Target Growth API
     const response = await fetch('https://targetgrowths.com/payment/initiate', {
       method: 'POST',
       headers: {
@@ -327,7 +336,7 @@ async function initiateTargetGrowthDeposit(req, res) {
     });
 
     const text = await response.text();
-    console.log('[TG] Raw response:', text);
+    console.log('[TG-DEPOSIT] Raw response:', text);
     
     let providerResponse;
     try {
@@ -336,8 +345,14 @@ async function initiateTargetGrowthDeposit(req, res) {
       providerResponse = { raw: text };
     }
 
+    // Check for errors
     if (!response.ok || providerResponse?.error === "true" || providerResponse?.success === false) {
-      console.error('[TG] API error:', providerResponse);
+      console.error('[TG-DEPOSIT] API Error:', {
+        status: response.status,
+        responseData: providerResponse,
+        sentParams: Object.fromEntries(body)
+      });
+      
       throw new Error(providerResponse?.message || `Target Growth request failed (${response.status})`);
     }
 
@@ -345,7 +360,7 @@ async function initiateTargetGrowthDeposit(req, res) {
     const providerRef = providerResponse?.transaction_ref || providerResponse?.trx_id;
 
     if (!checkoutUrl) {
-      console.error('[TG] No checkout URL in response:', providerResponse);
+      console.error('[TG-DEPOSIT] No checkout URL in response:', providerResponse);
       throw new Error('Target Growth did not return a checkout URL');
     }
 
@@ -364,7 +379,7 @@ async function initiateTargetGrowthDeposit(req, res) {
     });
 
   } catch (e) {
-    console.error('[TG Deposit Initiate Error]', e);
+    console.error('[TG-DEPOSIT] Initiate Error:', e);
     await supabaseAdmin.from('deposits').update({
       status: 'rejected', 
       provider_status: 'initiation_failed', 
@@ -374,8 +389,7 @@ async function initiateTargetGrowthDeposit(req, res) {
     
     return res.status(502).json({ error: e.message || 'Could not start payment' });
   }
-}
-
+    }
 // ==========================================
 // TARGET GROWTH WITHDRAWAL
 // ==========================================
