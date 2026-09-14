@@ -255,19 +255,19 @@ async function initiateTargetGrowthDeposit(req, res) {
   const { amount, email, full_name } = req.body;
   const numAmount = Number(amount);
   
-  // FIX 1: Minimum amount for Gateway 21 (Eazypay NGN) is 600
+  // Minimum amount for Gateway 21 (Eazypay NGN) is 600
   if (!numAmount || numAmount < 600) {
-    return res.status(400).json({ error: 'Minimum deposit is ₦600 for Target Growth' });
+    return res.status(400).json({ error: 'Minimum deposit is 600' });
   }
 
-  // FIX 2: Identifier MUST be max 20 characters
-  // Format: TGD + 8 chars of user ID + 4 chars of timestamp = 15 chars (well under 20)
+  // Create short identifier (max 20 chars per TG docs)
   const shortUserId = user.id.replace(/-/g, '').slice(0, 8);
   const shortTime = Date.now().toString(36).slice(-4).toUpperCase();
-  const identifier = `TGD${shortUserId}${shortTime}`; // Max 15 chars
+  const identifier = `TGD${shortUserId}${shortTime}`;
   
   const reference = `TG_DEP_${identifier}`;
 
+  // Save deposit record
   const { error: insertError } = await supabaseAdmin.from('deposits').insert({
     user_id: user.id, 
     amount: numAmount, 
@@ -280,32 +280,74 @@ async function initiateTargetGrowthDeposit(req, res) {
     created_at: new Date().toISOString()
   });
     
-  if (insertError) return res.status(500).json({ error: insertError.message });
+  if (insertError) {
+    console.error('[TG] DB insert error:', insertError);
+    return res.status(500).json({ error: insertError.message });
+  }
 
   try {
     const origin = getAppUrl(req);
-    const ipnUrl = `${origin}/api/webhooks/targetgrowths`;
     
-    // FIX 3: Truncate name and email to max 30 characters to satisfy Target Growth API
-    const safeName = (full_name || 'RMS User').substring(0, 30).trim();
-    const safeEmail = (email || 'user@example.com').substring(0, 30).trim();
+    // Prepare parameters EXACTLY as per TG documentation
+    const paymentData = {
+      identifier: identifier,
+      currency: 'NGN',  // REQUIRED - must be uppercase
+      amount: numAmount,
+      details: 'RMS Wallet Deposit',
+      gateway_id: '21',  // REQUIRED for NGN (Eazypay)
+      fee_bearer: 'merchant',  // Optional but recommended
+      ipn_url: `${origin}/api/webhooks/targetgrowths`,
+      success_url: `${origin}/deposit-success.html?ref=${encodeURIComponent(reference)}`,
+      cancel_url: `${origin}/deposit.html?cancelled=true`,
+      site_logo: `${origin}/logo.png`,
+      checkout_theme: 'light',
+      customer_name: (full_name || 'RMS User').substring(0, 30).trim(),
+      customer_email: (email || 'user@example.com').substring(0, 30).trim()
+    };
 
-    const providerResponse = await initiatePayment({
-      identifier, 
-      amount: numAmount, 
-      details: `RMS Wallet Deposit`, 
-      ipnUrl,
-      successUrl: `${origin}/deposit-success.html?ref=${encodeURIComponent(reference)}`,
-      cancelUrl: `${origin}/deposit.html?cancelled=true`,
-      siteLogo: `${origin}/logo.png`, 
-      customerName: safeName, 
-      customerEmail: safeEmail
+    console.log('[TG] Sending payment data:', JSON.stringify(paymentData, null, 2));
+
+    // Call Target Growth API
+    const { publicKey } = getCredentials();
+    const body = new URLSearchParams();
+    
+    Object.entries({ ...paymentData, public_key: publicKey }).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        body.set(key, String(value));
+      }
     });
+
+    const response = await fetch('https://targetgrowths.com/payment/initiate', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
+    });
+
+    const text = await response.text();
+    console.log('[TG] Raw response:', text);
+    
+    let providerResponse;
+    try {
+      providerResponse = JSON.parse(text);
+    } catch {
+      providerResponse = { raw: text };
+    }
+
+    if (!response.ok || providerResponse?.error === "true" || providerResponse?.success === false) {
+      console.error('[TG] API error:', providerResponse);
+      throw new Error(providerResponse?.message || `Target Growth request failed (${response.status})`);
+    }
 
     const checkoutUrl = providerResponse?.url || providerResponse?.checkout_url || providerResponse?.payment_url;
     const providerRef = providerResponse?.transaction_ref || providerResponse?.trx_id;
 
-    if (!checkoutUrl) throw new Error('Target Growth did not return a checkout URL');
+    if (!checkoutUrl) {
+      console.error('[TG] No checkout URL in response:', providerResponse);
+      throw new Error('Target Growth did not return a checkout URL');
+    }
 
     await supabaseAdmin.from('deposits').update({
       provider_reference: providerRef, 
@@ -314,7 +356,12 @@ async function initiateTargetGrowthDeposit(req, res) {
       updated_at: new Date().toISOString()
     }).eq('reference', reference);
 
-    return res.status(200).json({ ok: true, reference, identifier, checkout_url: checkoutUrl });
+    return res.status(200).json({ 
+      ok: true, 
+      reference, 
+      identifier, 
+      checkout_url: checkoutUrl 
+    });
 
   } catch (e) {
     console.error('[TG Deposit Initiate Error]', e);
