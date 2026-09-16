@@ -141,35 +141,30 @@ async function getWithdrawalEligibility(req, res) {
   const { data: profile } = await supabaseAdmin.from('profiles').select('vip_level').eq('id', user.id).single();
   const tier = profile?.vip_level || 'newbie';
   
+  // 1. Check VIP Status (Only M1 and above can withdraw)
   if (tier === 'newbie' || tier === 'M0') {
     return res.status(200).json({ can_withdraw_now: false, tier, reason_blocked: 'Upgrade to M1 or higher to withdraw.' });
   }
 
-  // Check Weekly Schedule & Time (WAT Timezone UTC+1)
+  // 2. Check Time (9 AM to 6 PM WAT - West Africa Time, UTC+1)
   const now = new Date();
-  const watTime = new Date(now.getTime() + (60 * 60 * 1000));
-  const watDay = watTime.getDay(); 
-  const watHour = watTime.getHours();
+  // WAT is UTC+1. We add 1 hour to the current UTC time to get WAT time.
+  const watTime = new Date(now.getTime() + (1 * 60 * 60 * 1000)); 
+  const watHour = watTime.getUTCHours();
   
-  const dayMap = { 'M1': 1, 'M2': 1, 'M3': 2, 'M4': 2, 'M5': 3, 'M6': 4, 'M7': 5 };
-  const allowedDay = dayMap[tier];
-  
-  if (allowedDay && watDay !== allowedDay) {
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    return res.status(200).json({ can_withdraw_now: false, tier, reason_blocked: `Withdrawals for ${tier} are only available on ${dayNames[allowedDay]}. Today is ${dayNames[watDay]}.` });
-  }
-
-  if (watDay === 0 || watDay === 6) {
-    return res.status(200).json({ can_withdraw_now: false, tier, reason_blocked: 'Withdrawals are closed on weekends.' });
-  }
-
   if (watHour < 9 || watHour >= 18) {
-    return res.status(200).json({ can_withdraw_now: false, tier, reason_blocked: 'Withdrawals are only available from 9am to 6pm WAT.' });
+    return res.status(200).json({ 
+      can_withdraw_now: false, 
+      tier, 
+      reason_blocked: 'Withdrawals are only available from 9:00 AM to 6:00 PM WAT.' 
+    });
   }
 
-  const watNow = new Date(now.getTime() + 60 * 60 * 1000);
+  // 3. Check Daily Limit (1 withdrawal per day)
+  // Calculate the start of the current day in WAT (UTC+1)
+  const watNow = new Date(now.getTime() + (1 * 60 * 60 * 1000));
   watNow.setUTCHours(0, 0, 0, 0);
-  const watStart = new Date(watNow.getTime() - 60 * 60 * 1000);
+  const watStart = new Date(watNow.getTime() - (1 * 60 * 60 * 1000)); // Convert back to UTC for DB query
 
   const { data: todayWithdrawals } = await supabaseAdmin
     .from('withdrawals')
@@ -178,9 +173,14 @@ async function getWithdrawalEligibility(req, res) {
     .gte('created_at', watStart.toISOString());
 
   if (todayWithdrawals && todayWithdrawals.length > 0) {
-    return res.status(200).json({ can_withdraw_now: false, tier, reason_blocked: 'You have already made a withdrawal today. Limit is 1 per day.' });
+    return res.status(200).json({ 
+      can_withdraw_now: false, 
+      tier, 
+      reason_blocked: 'You have already made a withdrawal today. Limit is 1 per day.' 
+    });
   }
 
+  // If all checks pass
   return res.status(200).json({ can_withdraw_now: true, tier });
 }
 
