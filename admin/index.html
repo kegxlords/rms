@@ -41,7 +41,7 @@
     .stat-value { font-size: 1.6rem; font-weight: 900; }
     .card { background: var(--card); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 20px; backdrop-filter: blur(10px); margin-bottom: 20px; }
     .table-container { overflow-x: auto; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); -webkit-overflow-scrolling: touch; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 600px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 700px; }
     thead { background: rgba(0,0,0,0.3); }
     th { padding: 12px; text-align: left; font-weight: 700; color: rgba(255,255,255,0.8); border-bottom: 2px solid rgba(255,255,255,0.1); white-space: nowrap; }
     td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
@@ -117,26 +117,28 @@
         <div class="stat-card"><div class="stat-header"><div><div class="stat-label">Total Users</div><div class="stat-value" id="stat-users">0</div></div><div class="stat-icon blue"><i class="fa-solid fa-users"></i></div></div></div>
         <div class="stat-card"><div class="stat-header"><div><div class="stat-label">Completed Deposits</div><div class="stat-value" id="stat-deposits">₦0</div></div><div class="stat-icon green"><i class="fa-solid fa-arrow-down"></i></div></div></div>
         <div class="stat-card"><div class="stat-header"><div><div class="stat-label">Pending Deposits</div><div class="stat-value" id="stat-pending-deposits">0</div></div><div class="stat-icon yellow"><i class="fa-solid fa-clock"></i></div></div></div>
-        <div class="stat-card"><div class="stat-header"><div><div class="stat-label">Completed Withdrawals</div><div class="stat-value" id="stat-withdrawals">₦0</div></div><div class="stat-icon blue"><i class="fa-solid fa-arrow-up"></i></div></div></div>
+        <div class="stat-card"><div class="stat-header"><div><div class="stat-label">Approved Withdrawals</div><div class="stat-value" id="stat-withdrawals">₦0</div></div><div class="stat-icon blue"><i class="fa-solid fa-arrow-up"></i></div></div></div>
         <div class="stat-card"><div class="stat-header"><div><div class="stat-label">Pending Withdrawals</div><div class="stat-value" id="stat-pending-withdrawals">0</div></div><div class="stat-icon red"><i class="fa-solid fa-clock"></i></div></div></div>
       </div>
     </section>
 
     <!-- Deposits -->
     <section id="deposits" class="section">
-      <h2 class="section-title"><i class="fa-solid fa-arrow-down"></i> Deposit History</h2>
-      <div class="card" style="background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); padding: 16px; margin-bottom: 20px; border-radius: 12px;">
-        <p style="color: var(--success); font-weight: 600; font-size: 0.9rem;"><i class="fa-solid fa-circle-check"></i> All deposits are auto-approved via Target Growth webhook.</p>
+      <h2 class="section-title"><i class="fa-solid fa-arrow-down"></i> Deposit Management</h2>
+      <div class="card" style="background: rgba(255,165,0,0.1); border: 1px solid rgba(255,165,0,0.3); padding: 16px; margin-bottom: 20px; border-radius: 12px;">
+        <p style="color: var(--warning); font-weight: 600; font-size: 0.9rem;"><i class="fa-solid fa-circle-exclamation"></i> Manual deposits require admin approval. Verify the payment in your bank app before approving. Approving credits the user + pays 10% referral commission automatically.</p>
       </div>
       <div class="filters">
         <select class="filter-select" id="deposit-filter" onchange="loadDeposits()">
-          <option value="all">All Status</option><option value="completed">Completed</option>
-          <option value="pending">Pending</option><option value="rejected">Rejected</option>
+          <option value="pending">Pending</option>
+          <option value="all">All Status</option>
+          <option value="completed">Completed</option>
+          <option value="rejected">Rejected</option>
         </select>
       </div>
       <div class="card"><div class="table-container">
-        <table><thead><tr><th>User</th><th>Amount</th><th>Method</th><th>Status</th><th>Date</th></tr></thead>
-        <tbody id="deposits-table"><tr><td colspan="5" class="loading"><i class="fa-solid fa-circle-notch fa-spin"></i></td></tr></tbody></table>
+        <table><thead><tr><th>User</th><th>Amount</th><th>Sender / Proof</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody id="deposits-table"><tr><td colspan="6" class="loading"><i class="fa-solid fa-circle-notch fa-spin"></i></td></tr></tbody></table>
       </div></div>
     </section>
 
@@ -144,12 +146,14 @@
     <section id="withdrawals" class="section">
       <h2 class="section-title"><i class="fa-solid fa-arrow-up"></i> Withdrawal Management</h2>
       <div class="card" style="background: rgba(255,165,0,0.1); border: 1px solid rgba(255,165,0,0.3); padding: 16px; margin-bottom: 20px; border-radius: 12px;">
-        <p style="color: var(--warning); font-weight: 600; font-size: 0.9rem;"><i class="fa-solid fa-circle-exclamation"></i> Withdrawals require admin approval. Fees are auto-calculated.</p>
+        <p style="color: var(--warning); font-weight: 600; font-size: 0.9rem;"><i class="fa-solid fa-circle-exclamation"></i> Withdrawals are processed MANUALLY. Clicking "Pay" marks it approved — send the money from your own bank afterwards. Rejecting refunds the user automatically.</p>
       </div>
       <div class="filters">
         <select class="filter-select" id="withdrawal-filter" onchange="loadWithdrawals()">
-          <option value="pending">Pending</option><option value="approved">Approved</option>
-          <option value="completed">Completed</option><option value="rejected">Rejected</option><option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="all">All</option>
         </select>
       </div>
       <div class="card"><div class="table-container">
@@ -158,7 +162,7 @@
       </div></div>
     </section>
 
-    <!-- Users (SEARCH FIXED) -->
+    <!-- Users -->
     <section id="users" class="section">
       <h2 class="section-title"><i class="fa-solid fa-users"></i> User Management</h2>
       <div class="filters">
@@ -226,11 +230,23 @@
     <!-- Settings -->
     <section id="settings" class="section">
       <h2 class="section-title"><i class="fa-solid fa-gear"></i> Site Settings</h2>
+      
+      <div class="card">
+        <h3 style="margin-bottom: 16px; color: var(--secondary); font-size: 1.1rem;"><i class="fa-solid fa-building-columns"></i> Deposit Bank Account (shown to users)</h3>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px;">
+          <div class="form-group"><label class="form-label">Bank Name</label><input type="text" id="dep-bank-name" class="form-input" placeholder="e.g. Access Bank"></div>
+          <div class="form-group"><label class="form-label">Account Number</label><input type="text" id="dep-acct-number" class="form-input" placeholder="e.g. 0123456789"></div>
+          <div class="form-group"><label class="form-label">Account Name</label><input type="text" id="dep-acct-name" class="form-input" placeholder="e.g. RMS Ltd"></div>
+        </div>
+        <button class="btn btn-primary" onclick="saveDepositBank()"><i class="fa-solid fa-save"></i> Save Bank Details</button>
+      </div>
+
       <div class="card">
         <h3 style="margin-bottom: 16px; color: var(--secondary); font-size: 1.1rem;"><i class="fa-solid fa-percent"></i> Withdrawal Fee</h3>
         <div class="form-group" style="max-width: 300px;"><label class="form-label">Fee Percentage (%)</label><input type="number" id="withdrawal-fee" class="form-input" placeholder="e.g., 10 for 10%"></div>
         <button class="btn btn-primary" onclick="saveWithdrawalFee()"><i class="fa-solid fa-save"></i> Save Fee</button>
       </div>
+
       <div class="card">
         <h3 style="margin-bottom: 16px; color: var(--secondary); font-size: 1.1rem;"><i class="fa-solid fa-headset"></i> Support Links</h3>
         <div class="form-group"><label class="form-label">Telegram Link</label><input type="text" id="link-telegram" class="form-input" placeholder="https://t.me/yourchannel"></div>
@@ -338,68 +354,72 @@
     window.closeModal = (id) => document.getElementById(id).classList.remove('active');
     window.logout = async () => { await supabase.auth.signOut(); window.location.href = '/login.html'; };
 
+    // ===== DASHBOARD =====
     async function loadDashboard() {
-      const resetStats = () => {
-        document.getElementById('stat-users').textContent = '0';
-        document.getElementById('stat-deposits').textContent = '₦0';
-        document.getElementById('stat-pending-deposits').textContent = '0';
-        document.getElementById('stat-withdrawals').textContent = '₦0';
-        document.getElementById('stat-pending-withdrawals').textContent = '0';
-      };
-
       try {
         const token = await getToken();
-        const response = await fetch('/api/admin?action=get-dashboard-stats', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await fetch('/api/admin?action=get-dashboard-stats', { headers: { Authorization: `Bearer ${token}` } });
         const stats = await response.json();
+        if (!response.ok) throw new Error(stats.error || 'Failed to load stats');
 
-        if (!response.ok) {
-          throw new Error(stats.error || 'Failed to load dashboard statistics');
-        }
-
-        document.getElementById('stat-users').textContent =
-          Number(stats.users || 0).toLocaleString();
-        document.getElementById('stat-deposits').textContent =
-          `₦${Number(stats.totalDeposits || 0).toLocaleString()}`;
-        document.getElementById('stat-pending-deposits').textContent =
-          Number(stats.pendingDeposits || 0).toLocaleString();
-        document.getElementById('stat-withdrawals').textContent =
-          `₦${Number(stats.totalWithdrawals || 0).toLocaleString()}`;
-        document.getElementById('stat-pending-withdrawals').textContent =
-          Number(stats.pendingWithdrawals || 0).toLocaleString();
-
-        console.log('[ADMIN] Dashboard statistics:', stats);
+        document.getElementById('stat-users').textContent = Number(stats.users || 0).toLocaleString();
+        document.getElementById('stat-deposits').textContent = `₦${Number(stats.totalDeposits || 0).toLocaleString()}`;
+        document.getElementById('stat-pending-deposits').textContent = Number(stats.pendingDeposits || 0).toLocaleString();
+        document.getElementById('stat-withdrawals').textContent = `₦${Number(stats.totalWithdrawals || 0).toLocaleString()}`;
+        document.getElementById('stat-pending-withdrawals').textContent = Number(stats.pendingWithdrawals || 0).toLocaleString();
       } catch (error) {
-        console.error('[ADMIN] Dashboard statistics failed:', error);
-        resetStats();
-        if (typeof showToast === 'function') {
-          showToast('Failed to load dashboard statistics', 'error');
-        }
+        console.error('[ADMIN] Dashboard stats failed:', error);
+        if (typeof showToast === 'function') showToast('Failed to load dashboard statistics', 'error');
       }
     }
 
+    // ===== DEPOSITS (MANUAL) =====
     window.loadDeposits = async function () {
       const status = document.getElementById('deposit-filter').value;
       const res = await fetch(`/api/admin?action=get-deposits&status=${status}`, { headers: { 'Authorization': `Bearer ${await getToken()}` } });
       const data = await res.json();
       const tbody = document.getElementById('deposits-table');
-      if (!data.deposits || !data.deposits.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:rgba(255,255,255,0.5);">No deposits found</td></tr>'; return; }
+      if (!data.deposits || !data.deposits.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:rgba(255,255,255,0.5);">No deposits found</td></tr>';
+        return;
+      }
       tbody.innerHTML = data.deposits.map(d => `
         <tr>
           <td><div style="font-weight:700;">${d.profiles?.full_name || 'User'}</div><div style="font-size:0.75rem;color:rgba(255,255,255,0.6);">${d.profiles?.email}</div></td>
           <td style="font-weight:800;color:var(--success);">₦${Number(d.amount).toLocaleString()}</td>
-          <td>${d.method || 'targetgrowths'}</td>
+          <td style="font-size:0.8rem;">${d.sender_name || '-'}<br><span style="color:rgba(255,255,255,0.5);">${d.proof_image_url || d.payment_method || '-'}</span></td>
           <td><span class="status-badge ${d.status}">${d.status}</span></td>
           <td>${new Date(d.created_at).toLocaleDateString()}</td>
+          <td style="white-space:nowrap;">${d.status === 'pending' ? `
+            <button class="btn btn-success btn-sm" onclick="processDeposit('${d.id}', 'approve', this)"><i class="fa-solid fa-check"></i> Approve</button>
+            <button class="btn btn-danger btn-sm" onclick="processDeposit('${d.id}', 'reject', this)"><i class="fa-solid fa-xmark"></i></button>
+          ` : '-'}</td>
         </tr>`).join('');
     };
 
+    window.processDeposit = async (id, act, button) => {
+      if (!confirm(`Are you sure you want to ${act} this deposit?`)) return;
+      if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; }
+      const res = await fetch('/api/admin?action=process-deposit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+        body: JSON.stringify({ deposit_id: id, act })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to process deposit');
+        await loadDeposits();
+        return;
+      }
+      showToast(`Deposit ${act}d!${act === 'approve' ? ` ₦${Number(data.credited || 0).toLocaleString()} credited.` : ''}`, 'success');
+      await loadDeposits();
+      await loadDashboard();
+    };
+
+    // ===== WITHDRAWALS (MANUAL) =====
     window.loadWithdrawals = async function () {
       const status = document.getElementById('withdrawal-filter').value;
-      const res = await fetch(`/api/admin?action=get-withdrawals&status=${encodeURIComponent(status)}`, {
-        headers: { Authorization: `Bearer ${await getToken()}` }
-      });
+      const res = await fetch(`/api/admin?action=get-withdrawals&status=${encodeURIComponent(status)}`, { headers: { Authorization: `Bearer ${await getToken()}` } });
       const data = await res.json();
       const tbody = document.getElementById('withdrawals-table');
       if (!res.ok) {
@@ -414,9 +434,10 @@
         <tr>
           <td><div style="font-weight:700;">${w.profiles?.full_name || 'User'}</div><div style="font-size:0.75rem;color:rgba(255,255,255,0.6);">${w.profiles?.email || ''}</div></td>
           <td style="font-weight:800;color:var(--warning);">₦${Number(w.amount || 0).toLocaleString()}</td>
-          <td>${w.bank_name || '-'}</td><td>${w.account_number || '-'}</td>
-          <td><span class="status-badge ${w.status}">${w.status}</span><div style="font-size:0.72rem;color:rgba(255,255,255,0.55);">${w.provider_status || ''}</div></td>
-          <td>${w.status === 'pending' ? `
+          <td>${w.bank_name || '-'}</td>
+          <td>${w.account_number || '-'}<br><span style="font-size:0.72rem;color:rgba(255,255,255,0.55);">${w.account_name || ''}</span></td>
+          <td><span class="status-badge ${w.status}">${w.status}</span></td>
+          <td style="white-space:nowrap;">${w.status === 'pending' ? `
             <button class="btn btn-success btn-sm" onclick="processWithdrawal('${w.id}', 'approve', this)"><i class="fa-solid fa-check"></i> Pay</button>
             <button class="btn btn-danger btn-sm" onclick="processWithdrawal('${w.id}', 'reject', this)"><i class="fa-solid fa-xmark"></i></button>
           ` : '-'}</td>
@@ -424,11 +445,8 @@
     };
 
     window.processWithdrawal = async (id, act, button) => {
-      if (!confirm(`Are you sure you want to ${act} this withdrawal?`)) return;
-      if (button) {
-        button.disabled = true;
-        button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Processing';
-      }
+      if (!confirm(`Are you sure you want to ${act === 'approve' ? 'approve (and pay manually)' : 'reject (auto-refund)'} this withdrawal?`)) return;
+      if (button) { button.disabled = true; button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; }
       const res = await fetch('/api/admin?action=process-withdrawal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
@@ -436,18 +454,16 @@
       });
       const data = await res.json();
       if (!res.ok) {
-        if (button) button.disabled = false;
         alert(data.error || 'Withdrawal processing failed');
         await loadWithdrawals();
         return;
       }
-      showToast(`Withdrawal ${act}d! (Net sent: ₦${Number(data.netAmount || 0).toLocaleString()})`, 'success');
-      // The default Pending filter reloads without the approved row.
+      showToast(`Withdrawal ${act === 'approve' ? 'approved! Send payment manually now.' : 'rejected & refunded.'}`, 'success');
       await loadWithdrawals();
       await loadDashboard();
     };
 
-    // ===== USERS + FIXED SEARCH =====
+    // ===== USERS =====
     window.loadUsers = async function () {
       const search = (document.getElementById('user-search').value || '').trim();
       const tbody = document.getElementById('users-table');
@@ -475,11 +491,7 @@
 
     window.searchUsers = () => loadUsers();
     window.clearSearch = () => { document.getElementById('user-search').value = ''; loadUsers(); };
-
-    // Enter key triggers search
-    document.getElementById('user-search').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') loadUsers();
-    });
+    document.getElementById('user-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadUsers(); });
 
     window.openUserModal = (id, email, balance, tier, isFrozen) => {
       currentUserId = id;
@@ -534,7 +546,7 @@
       if (res.ok) showToast('Tier updated!', 'success');
     };
 
-    // ===== WEALTH PACKAGES =====
+    // ===== WEALTH =====
     window.loadWealthPackages = async function () {
       const tbody = document.getElementById('wealth-packages-table');
       tbody.innerHTML = '<tr><td colspan="8" class="loading"><i class="fa-solid fa-circle-notch fa-spin"></i></td></tr>';
@@ -664,8 +676,25 @@
         document.getElementById('link-whatsapp').value = data.settings.whatsapp_link || '';
         document.getElementById('link-support').value = data.settings.support_link || '';
         document.getElementById('withdrawal-fee').value = data.settings.withdrawal_fee_percentage || '0';
+        document.getElementById('dep-bank-name').value = data.settings.deposit_bank_name || '';
+        document.getElementById('dep-acct-number').value = data.settings.deposit_account_number || '';
+        document.getElementById('dep-acct-name').value = data.settings.deposit_account_name || '';
       }
     }
+
+    window.saveDepositBank = async () => {
+      const res = await fetch('/api/admin?action=save-deposit-bank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
+        body: JSON.stringify({
+          bank_name: document.getElementById('dep-bank-name').value,
+          account_number: document.getElementById('dep-acct-number').value,
+          account_name: document.getElementById('dep-acct-name').value
+        })
+      });
+      if (res.ok) showToast('Deposit bank details saved!', 'success');
+      else alert((await res.json()).error);
+    };
 
     window.saveSupportLinks = async () => {
       await fetch('/api/admin?action=save-support-links', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` }, body: JSON.stringify({ telegram: document.getElementById('link-telegram').value, whatsapp: document.getElementById('link-whatsapp').value, support: document.getElementById('link-support').value }) });
