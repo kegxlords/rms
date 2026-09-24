@@ -5,542 +5,160 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>RMS — Deposit Funds</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
   <meta name="theme-color" content="#0a0e27">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
-    
-    body {
-      background: linear-gradient(135deg, #0a0e27 0%, #1a1f4e 50%, #0a0e27 100%);
-      min-height: 100vh;
-      color: white;
-      padding-bottom: 40px;
-    }
-
-    .page-container {
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 20px 16px;
-    }
-
-    /* Top Navigation */
-    .top-nav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 24px;
-      padding: 12px 0;
-    }
-
-    .back-btn {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: rgba(255,255,255,0.7);
-      text-decoration: none;
-      font-size: 0.9rem;
-      font-weight: 600;
-      transition: all 0.3s;
-      padding: 8px 12px;
-      border-radius: 10px;
-    }
-
-    .back-btn:hover {
-      color: #ffd700;
-      background: rgba(255,215,0,0.1);
-    }
-
-    .page-title {
-      font-size: 1.1rem;
-      font-weight: 800;
-      color: white;
-    }
-
-    .spacer { width: 80px; }
-
-    /* Hero Card */
-    .hero-card {
-      background: linear-gradient(135deg, rgba(0,102,255,0.15), rgba(0,212,255,0.08));
-      border: 1px solid rgba(0,212,255,0.2);
-      border-radius: 24px;
-      padding: 32px 24px;
-      text-align: center;
-      margin-bottom: 24px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero-card::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      right: -50%;
-      width: 200%;
-      height: 200%;
-      background: radial-gradient(circle, rgba(255,215,0,0.1) 0%, transparent 60%);
-      pointer-events: none;
-    }
-
-    .hero-icon {
-      width: 80px;
-      height: 80px;
-      background: linear-gradient(135deg, #ffd700, #e6c200);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 20px;
-      font-size: 2.2rem;
-      color: #0a0e27;
-      box-shadow: 0 8px 32px rgba(255,215,0,0.3);
-      position: relative;
-      z-index: 1;
-    }
-
-    .hero-card h1 {
-      font-size: 1.8rem;
-      font-weight: 900;
-      margin-bottom: 8px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .hero-card p {
-      color: rgba(255,255,255,0.7);
-      font-size: 0.95rem;
-      position: relative;
-      z-index: 1;
-    }
-
-    /* Amount Input Card */
-    .input-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 20px;
-      padding: 24px;
-      margin-bottom: 20px;
-      backdrop-filter: blur(10px);
-    }
-
-    .input-label {
-      font-size: 0.85rem;
-      color: rgba(255,255,255,0.6);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      font-weight: 700;
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .amount-input-wrapper {
-      position: relative;
-      margin-bottom: 12px;
-    }
-
-    .amount-input {
-      width: 100%;
-      padding: 20px 20px 20px 50px;
-      background: rgba(0,0,0,0.3);
-      border: 2px solid rgba(255,255,255,0.1);
-      border-radius: 14px;
-      color: white;
-      font-size: 1.8rem;
-      font-weight: 900;
-      transition: all 0.3s;
-    }
-
-    .amount-input:focus {
-      outline: none;
-      border-color: #ffd700;
-      background: rgba(0,0,0,0.4);
-      box-shadow: 0 0 0 4px rgba(255,215,0,0.1);
-    }
-
-    .currency-icon {
-      position: absolute;
-      left: 18px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #ffd700;
-      font-size: 1.5rem;
-      font-weight: 900;
-    }
-
-    .amount-limits {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.8rem;
-      color: rgba(255,255,255,0.5);
-    }
-
-    /* Quick Amounts */
-    .quick-amounts {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-
-    .quick-btn {
-      padding: 14px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px;
-      color: white;
-      font-weight: 700;
-      font-size: 0.95rem;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-
-    .quick-btn:hover {
-      background: rgba(255,215,0,0.1);
-      border-color: rgba(255,215,0,0.3);
-      transform: translateY(-2px);
-    }
-
-    .quick-btn:active {
-      transform: translateY(0);
-    }
-
-    /* Payment Method */
-    .payment-method {
-      background: rgba(0,212,255,0.08);
-      border: 1px solid rgba(0,212,255,0.2);
-      border-radius: 14px;
-      padding: 16px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 20px;
-    }
-
-    .payment-method-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .payment-method-icon {
-      width: 40px;
-      height: 40px;
-      background: linear-gradient(135deg, #00d4ff, #0066ff);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 1.1rem;
-    }
-
-    .payment-method-name {
-      font-weight: 700;
-      font-size: 0.95rem;
-    }
-
-    .payment-method-desc {
-      font-size: 0.8rem;
-      color: rgba(255,255,255,0.6);
-    }
-
-    .payment-method-badge {
-      background: rgba(0,255,136,0.15);
-      color: #00ff88;
-      padding: 4px 10px;
-      border-radius: 8px;
-      font-size: 0.75rem;
-      font-weight: 700;
-    }
-
-    /* Submit Button */
-    .submit-btn {
-      width: 100%;
-      padding: 18px;
-      font-size: 1.1rem;
-      font-weight: 900;
-      border: none;
-      border-radius: 14px;
-      background: linear-gradient(135deg, #ffd700, #e6c200);
-      color: #0a0e27;
-      cursor: pointer;
-      transition: all 0.3s;
-      box-shadow: 0 8px 24px rgba(255,215,0,0.3);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      margin-bottom: 16px;
-    }
-
-    .submit-btn:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 12px 32px rgba(255,215,0,0.4);
-    }
-
-    .submit-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      background: #555;
-      color: #aaa;
-      box-shadow: none;
-    }
-
-    /* Security Badge */
-    .security-badge {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 12px;
-      background: rgba(0,255,136,0.08);
-      border: 1px solid rgba(0,255,136,0.2);
-      border-radius: 12px;
-      font-size: 0.85rem;
-      color: #00ff88;
-      font-weight: 600;
-    }
-
-    /* Info Cards */
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 20px;
-    }
-
-    .info-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 12px;
-      padding: 16px;
-      text-align: center;
-    }
-
-    .info-card i {
-      font-size: 1.5rem;
-      color: #ffd700;
-      margin-bottom: 8px;
-    }
-
-    .info-card-title {
-      font-size: 0.8rem;
-      color: rgba(255,255,255,0.6);
-      margin-bottom: 4px;
-    }
-
-    .info-card-value {
-      font-size: 1rem;
-      font-weight: 800;
-      color: white;
-    }
-
-    @media (max-width: 480px) {
-      .hero-card h1 { font-size: 1.5rem; }
-      .amount-input { font-size: 1.5rem; }
-    }
+    body { background: linear-gradient(135deg, #0a0e27 0%, #1a1f4e 50%, #0a0e27 100%); min-height: 100vh; color: white; padding-bottom: 100px; }
+    .deposit-container { padding: 20px 16px; max-width: 600px; margin: 0 auto; }
+    .page-header { margin-bottom: 24px; }
+    .page-header h2 { font-size: 1.8rem; font-weight: 900; color: white; margin-bottom: 6px; }
+    .page-header p { color: rgba(255,255,255,0.6); font-size: 0.95rem; }
+    .bank-card { background: linear-gradient(135deg, #0066ff 0%, #00d4ff 100%); border-radius: 24px; padding: 24px; margin-bottom: 24px; box-shadow: 0 20px 60px rgba(0,102,255,0.3); }
+    .bank-card h3 { font-size: 1rem; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .bank-row { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 12px 16px; margin-bottom: 10px; }
+    .bank-row span:first-child { font-size: 0.8rem; color: rgba(255,255,255,0.8); }
+    .bank-row span:last-child { font-weight: 800; font-size: 1rem; }
+    .copy-mini { background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 0.75rem; margin-left: 8px; }
+    .section-title { font-size: 1rem; font-weight: 700; color: rgba(255,255,255,0.8); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .section-title i { color: #00d4ff; }
+    .amount-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+    .amount-btn { padding: 16px; background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.1); border-radius: 14px; color: white; font-weight: 700; font-size: 1rem; cursor: pointer; transition: all 0.3s; }
+    .amount-btn.active { background: rgba(255,215,0,0.2); border-color: #ffd700; color: #ffd700; }
+    .form-group { margin-bottom: 18px; }
+    .form-label { display: block; font-size: 0.85rem; color: rgba(255,255,255,0.7); font-weight: 600; margin-bottom: 8px; }
+    .form-input, .form-select { width: 100%; padding: 14px 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: white; font-size: 0.95rem; }
+    .form-select option { background: #1a1f4e; }
+    .form-input:focus, .form-select:focus { outline: none; border-color: #00d4ff; }
+    .submit-btn { width: 100%; padding: 16px; font-size: 1.05rem; font-weight: 800; border: none; border-radius: 14px; background: linear-gradient(135deg, #ffd700, #e6c200); color: #0a0e27; cursor: pointer; box-shadow: 0 8px 24px rgba(255,215,0,0.3); display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; background: #555; color: #aaa; }
+    .info-box { background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.3); border-radius: 12px; padding: 14px; margin-top: 20px; font-size: 0.85rem; color: #00d4ff; text-align: center; font-weight: 600; }
   </style>
 </head>
-<body>
-  <div class="page-container">
-    <!-- Top Navigation -->
-    <div class="top-nav">
-      <a href="/dashboard.html" class="back-btn">
-        <i class="fa-solid fa-arrow-left"></i>
-        <span>Back</span>
-      </a>
-      <div class="page-title">Deposit</div>
-      <div class="spacer"></div>
+<body class="rv-shell">
+  <div id="header-container"></div>
+  <div class="deposit-container">
+    <div class="page-header">
+      <h2>Deposit Funds</h2>
+      <p>Transfer to our account, then submit your proof</p>
     </div>
 
-    <!-- Hero Card -->
-    <div class="hero-card">
-      <div class="hero-icon">
-        <i class="fa-solid fa-wallet"></i>
-      </div>
-      <h1>Fund Your Wallet</h1>
-      <p>Instant deposit via Target Growth Gateway</p>
+    <div class="bank-card">
+      <h3><i class="fa-solid fa-building-columns"></i> Company Account Details</h3>
+      <div class="bank-row"><span>Bank Name</span><span id="bank-name">—</span></div>
+      <div class="bank-row"><span>Account Number</span><span><span id="acct-number">—</span><button class="copy-mini" onclick="copyText('acct-number')"><i class="fa-regular fa-copy"></i></button></span></div>
+      <div class="bank-row"><span>Account Name</span><span id="acct-name">—</span></div>
     </div>
 
-    <!-- Amount Input -->
-    <div class="input-card">
-      <div class="input-label">
-        <i class="fa-solid fa-coins"></i>
-        Enter Amount
-      </div>
-      <div class="amount-input-wrapper">
-        <input 
-          type="number" 
-          id="amount" 
-          class="amount-input" 
-          placeholder="0.00" 
-          min="600" 
-          max="1000000" 
-          step="100"
-          required 
-          autocomplete="off"
-        >
-        <span class="currency-icon">₦</span>
-      </div>
-      <div class="amount-limits">
-        <span>Min: ₦15000</span>
-        <span>Max: ₦1,000,000</span>
-      </div>
+    <div class="section-title"><i class="fa-solid fa-naira-sign"></i> Select Amount</div>
+    <div class="amount-grid">
+      <button class="amount-btn" onclick="selectAmount(15000)">₦15,000</button>
+      <button class="amount-btn" onclick="selectAmount(38000)">₦38,000</button>
+      <button class="amount-btn" onclick="selectAmount(79500)">₦79,500</button>
+      <button class="amount-btn" onclick="selectAmount(175000)">₦175,000</button>
+      <button class="amount-btn" onclick="selectAmount(450000)">₦450,000</button>
+      <button class="amount-btn" onclick="selectAmount(690000)">₦690,000</button>
     </div>
 
-    <!-- Quick Amounts -->
-    <div class="quick-amounts">
-      <button type="button" class="quick-btn" onclick="setAmount(15000)">₦15,000</button>
-      <button type="button" class="quick-btn" onclick="setAmount(38000)">₦38,000</button>
-      <button type="button" class="quick-btn" onclick="setAmount(79500)">₦79,500</button>
-      <button type="button" class="quick-btn" onclick="setAmount(175000)">₦175,000</button>
-      <button type="button" class="quick-btn" onclick="setAmount(450000)">₦450,000</button>
-      <button type="button" class="quick-btn" onclick="setAmount(690000)">₦690,000</button>
-    </div>
-
-    <!-- Payment Method -->
-    <div class="payment-method">
-      <div class="payment-method-left">
-        <div class="payment-method-icon">
-          <i class="fa-solid fa-bolt"></i>
-        </div>
-        <div>
-          <div class="payment-method-name">Target Growth</div>
-          <div class="payment-method-desc">Instant Processing</div>
-        </div>
+    <form id="deposit-form">
+      <div class="form-group">
+        <label class="form-label">Or Enter Custom Amount (₦)</label>
+        <input type="number" id="custom-amount" class="form-input" placeholder="Minimum ₦1,000" min="1000">
       </div>
-      <div class="payment-method-badge">SECURE</div>
-    </div>
-
-    <!-- Submit Button -->
-    <button type="button" class="submit-btn" id="submit-btn" onclick="handleDeposit()">
-      <i class="fa-solid fa-bolt"></i>
-      <span>Pay Now</span>
-    </button>
-
-    <!-- Security Badge -->
-    <div class="security-badge">
-      <i class="fa-solid fa-shield-halved"></i>
-      <span>256-bit SSL Encrypted & Secured by Target Growth</span>
-    </div>
-
-    <!-- Info Cards -->
-    <div class="info-grid">
-      <div class="info-card">
-        <i class="fa-solid fa-clock"></i>
-        <div class="info-card-title">Processing Time</div>
-        <div class="info-card-value">Instant</div>
+      <div class="form-group">
+        <label class="form-label">Sender Name (Name on your bank app)</label>
+        <input type="text" id="sender-name" class="form-input" placeholder="e.g. John Doe" required>
       </div>
-      <div class="info-card">
-        <i class="fa-solid fa-percent"></i>
-        <div class="info-card-title">Transaction Fee</div>
-        <div class="info-card-value">0%</div>
+      <div class="form-group">
+        <label class="form-label">Payment Method</label>
+        <select id="payment-method" class="form-select" required>
+          <option value="bank_transfer">Bank Transfer</option>
+          <option value="opay">Opay</option>
+          <option value="palmpay">PalmPay</option>
+        </select>
       </div>
+      <div class="form-group">
+        <label class="form-label">Transfer Reference / Receipt ID (optional)</label>
+        <input type="text" id="proof-ref" class="form-input" placeholder="e.g. TRF/2026/123456">
+      </div>
+      <button type="submit" class="submit-btn" id="submit-btn">
+        <i class="fa-solid fa-paper-plane"></i> Submit for Approval
+      </button>
+    </form>
+
+    <div class="info-box">
+      <i class="fa-solid fa-clock"></i> Deposits are verified manually within 5–30 minutes
     </div>
   </div>
-
+  <div id="footer-container"></div>
+  <script src="/assets/js/components.js"></script>
   <script src="/assets/js/notifications.js"></script>
   <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
     const supabase = createClient('https://ofysznsajwxnjqaumwch.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9meXN6bnNhand4bmpxYXVtd2NoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyMzM4NDgsImV4cCI6MjEwMzgwOTg0OH0.XaHkP5WZ2nJVJXVdbG-D13rrD63g_09HxmJoZn7ZoWA');
+    window.supabase = supabase;
 
-    window.setAmount = (amount) => {
-      const input = document.getElementById('amount');
-      input.value = amount;
-      input.focus();
-      
-      // Visual feedback
-      input.style.borderColor = '#ffd700';
-      setTimeout(() => {
-        input.style.borderColor = '';
-      }, 500);
+    let selectedAmount = null;
+
+    window.selectAmount = (amount) => {
+      selectedAmount = amount;
+      document.getElementById('custom-amount').value = '';
+      document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
     };
 
-    window.handleDeposit = async () => {
-      const amountInput = document.getElementById('amount');
-      const amount = amountInput.value;
-      const btn = document.getElementById('submit-btn');
-      
-      const numAmount = Number(amount);
-      if (!numAmount || numAmount < 600) {
-        showToast('Minimum deposit is 600', 'error');
-        amountInput.focus();
-        return;
-      }
+    window.copyText = (id) => {
+      navigator.clipboard.writeText(document.getElementById(id).textContent);
+      showToast('Copied!', 'success');
+    };
 
-      if (numAmount > 1000000) {
-        showToast('Maximum deposit is ₦1,000,000', 'error');
-        amountInput.focus();
-        return;
+    async function loadBankDetails() {
+      try {
+        const res = await fetch('/api/admin?action=get-settings');
+        const data = await res.json();
+        document.getElementById('bank-name').textContent = data.settings?.deposit_bank_name || 'Contact Support';
+        document.getElementById('acct-number').textContent = data.settings?.deposit_account_number || '—';
+        document.getElementById('acct-name').textContent = data.settings?.deposit_account_name || '—';
+      } catch (e) {
+        console.error(e);
       }
-      
+    }
+
+    document.getElementById('deposit-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const custom = Number(document.getElementById('custom-amount').value);
+      const amount = custom || selectedAmount;
+      if (!amount || amount < 1000) return showToast('Minimum deposit is ₦1,000', 'error');
+
+      const btn = document.getElementById('submit-btn');
       btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Processing...';
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Submitting...';
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          showToast('Please login to continue', 'error');
-          setTimeout(() => { window.location.href = '/login.html'; }, 1500);
-          return;
-        }
-
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, email')
-          .eq('id', user.id)
-          .single();
-
         const token = (await supabase.auth.getSession()).data.session.access_token;
-        
-        console.log('🚀 Initiating Target Growth deposit...');
-
-        const res = await fetch('/api/finance?action=initiateTargetGrowthDeposit', {
+        const res = await fetch('/api/finance?action=createDeposit', {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}` 
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
-            amount: numAmount,
-            email: profile?.email || 'user@example.com',
-            full_name: profile?.full_name || 'RMS User'
+            amount,
+            payment_method: document.getElementById('payment-method').value,
+            sender_name: document.getElementById('sender-name').value.trim(),
+            proof_image_url: document.getElementById('proof-ref').value.trim() || null
           })
         });
-
-        const contentType = res.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-          const text = await res.text();
-          console.error("API returned non-JSON:", text);
-          throw new Error("Server error. Please try again.");
-        }
-
         const data = await res.json();
-        console.log('📦 API Response:', data);
-
-        if (!res.ok) {
-          throw new Error(data.error || 'Failed to initiate payment');
-        }
-
-        if (!data.checkout_url) {
-          throw new Error('No checkout URL received');
-        }
-
-        showToast('Redirecting to secure payment...', 'success');
-        
-        setTimeout(() => {
-          window.location.href = data.checkout_url;
-        }, 800);
-
+        if (!res.ok) throw new Error(data.error);
+        showToast('Deposit submitted! Admin will verify shortly.', 'success');
+        setTimeout(() => window.location.href = '/dashboard.html', 2000);
       } catch (err) {
-        console.error('❌ Deposit Error:', err);
-        showToast(err.message || 'Payment initiation failed', 'error');
+        showToast(err.message, 'error');
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-bolt"></i> Pay Now';
+        btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit for Approval';
       }
-    };
+    });
+
+    loadBankDetails();
   </script>
 </body>
 </html>
