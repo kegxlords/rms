@@ -1,10 +1,10 @@
 import supabaseAdmin from '../lib/supabase.js';
 import { verifyUser } from '../lib/auth.js';
-import { initiateTransfer } from '../lib/targetgrowths.js';
 
 export default async function handler(req, res) {
   const action = req.query.action;
   try {
+    // Public endpoint (used by deposit page to show bank details)
     if (action === 'get-settings') return await getSettings(req, res);
 
     const user = await verifyUser(req);
@@ -15,6 +15,7 @@ export default async function handler(req, res) {
     switch (action) {
       case 'get-dashboard-stats': return await getDashboardStats(req, res);
       case 'get-deposits': return await getDeposits(req, res);
+      case 'process-deposit': return await processDeposit(req, res);
       case 'get-withdrawals': return await getWithdrawals(req, res);
       case 'process-withdrawal': return await processWithdrawal(req, res);
       case 'get-users': return await getUsers(req, res);
@@ -22,6 +23,7 @@ export default async function handler(req, res) {
       case 'adjust-balance': return await adjustBalance(req, res);
       case 'save-setting': return await saveSetting(req, res);
       case 'save-support-links': return await saveSupportLinks(req, res);
+      case 'save-deposit-bank': return await saveDepositBank(req, res);
       case 'update-tier': return await updateTier(req, res);
       case 'admin-generate-gift-code': return await adminGenerateGiftCode(req, res);
       case 'send-message': return await sendMessage(req, res);
@@ -45,7 +47,7 @@ async function getDashboardStats(req, res) {
     supabaseAdmin.from('profiles').select('*', { count: 'exact', head: true }),
     supabaseAdmin.from('deposits').select('amount').eq('status', 'completed'),
     supabaseAdmin.from('deposits').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-    supabaseAdmin.from('withdrawals').select('amount, net_amount').eq('status', 'completed'),
+    supabaseAdmin.from('withdrawals').select('amount, net_amount').eq('status', 'approved'),
     supabaseAdmin.from('withdrawals').select('id', { count: 'exact', head: true }).eq('status', 'pending')
   ]);
 
@@ -72,18 +74,90 @@ async function getDashboardStats(req, res) {
 }
 
 // ==========================================
-// DEPOSITS
+// DEPOSITS (MANUAL FLOW)
 // ==========================================
 async function getDeposits(req, res) {
-  const status = req.query.status || 'all';
+  const status = req.query.status || 'pending';
   let q = supabaseAdmin.from('deposits').select('*, profiles!user_id(full_name, email)').order('created_at', { ascending: false }).limit(100);
   if (status !== 'all') q = q.eq('status', status);
   const { data } = await q;
   return res.json({ ok: true, deposits: data || [] });
 }
 
+async function processDeposit(req, res) {
+  const { deposit_id, act, note } = req.body;
+
+  const { data: d } = await supabaseAdmin.from('deposits').select('*').eq('id', deposit_id).single();
+  if (!d) return res.status(404).json({ error: 'Deposit not found' });
+  if (d.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
+
+  if (act === 'reject') {
+    await supabaseAdmin.from('deposits').update({
+      status: 'rejected',
+      provider_status: 'rejected_by_admin',
+      note: note || 'Rejected by admin',
+      updated_at: new Date().toISOString()
+    }).eq('id', d.id);
+    return res.json({ ok: true, action: 'rejected' });
+  }
+
+  if (act === 'approve') {
+    // 1. Credit user's wallet
+    const { data: wallet } = await supabaseAdmin.from('wallets').select('balance').eq('user_id', d.user_id).single();
+    const newBalance = Number(wallet?.balance || 0) + Number(d.amount);
+    await supabaseAdmin.from('wallets').upsert({
+      user_id: d.user_id,
+      balance: newBalance,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+
+    // 2. Record transaction
+    await supabaseAdmin.from('transactions').insert({
+      user_id: d.user_id,
+      type: 'deposit',
+      amount: Number(d.amount),
+      status: 'approved',
+      reference: `DEPOSIT_${d.id}`,
+      description: `Manual Deposit (${d.sender_name || 'User'})`,
+      created_at: new Date().toISOString()
+    });
+
+    // 3. Pay 10% referral commission if referrer exists
+    const { data: prof } = await supabaseAdmin.from('profiles').select('referred_by').eq('id', d.user_id).single();
+    if (prof?.referred_by && prof.referred_by !== d.user_id) {
+      const commission = Math.round(Number(d.amount) * 0.10 * 100) / 100;
+      const { data: rw } = await supabaseAdmin.from('wallets').select('balance').eq('user_id', prof.referred_by).single();
+      await supabaseAdmin.from('wallets').upsert({
+        user_id: prof.referred_by,
+        balance: Number(rw?.balance || 0) + commission,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+      await supabaseAdmin.from('referral_commissions').insert({
+        referrer_id: prof.referred_by,
+        referred_user_id: d.user_id,
+        deposit_id: d.id,
+        commission_amount: commission,
+        status: 'paid',
+        created_at: new Date().toISOString()
+      });
+    }
+
+    // 4. Mark deposit completed
+    await supabaseAdmin.from('deposits').update({
+      status: 'completed',
+      provider_status: 'approved_by_admin',
+      paid_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }).eq('id', d.id);
+
+    return res.json({ ok: true, action: 'approved', credited: Number(d.amount) });
+  }
+
+  return res.status(400).json({ error: 'Invalid action' });
+}
+
 // ==========================================
-// WITHDRAWALS
+// WITHDRAWALS (MANUAL FLOW)
 // ==========================================
 async function getWithdrawals(req, res) {
   const status = req.query.status || 'pending';
@@ -93,78 +167,37 @@ async function getWithdrawals(req, res) {
   return res.json({ ok: true, withdrawals: data || [] });
 }
 
-const TG_BANK_CODES = {
-  'access bank': 'NGR044', 'access': 'NGR044',
-  'gtbank': 'NGR058', 'guaranty trust bank': 'NGR058',
-  'zenith bank': 'NGR057', 'zenith': 'NGR057',
-  'uba': 'NGR033', 'united bank for africa': 'NGR033',
-  'first bank': 'NGR011', 'fidelity bank': 'NGR070',
-  'union bank': 'NGR032', 'sterling bank': 'NGR232',
-  'wema bank': 'NGR035', 'stanbic ibtc': 'NGR221',
-  'ecobank': 'NGR050', 'polaris bank': 'NGR076',
-  'opay': 'NGR20009', 'paycom': 'NGR999992',
-  'palmpay': 'NGR999991', 'kuda': 'NGR50211',
-  'moniepoint': 'NGR50515', 'vfd': 'NGR566'
-};
-
-// ==========================================
-// PROCESS WITHDRAWAL (MANUAL ADMIN FLOW)
-// ==========================================
 async function processWithdrawal(req, res) {
   const { withdrawal_id, act, note } = req.body;
-  
-  const { data: w, error: wError } = await supabaseAdmin.from('withdrawals').select('*').eq('id', withdrawal_id).single();
-  if (wError || !w) return res.status(404).json({ error: 'Withdrawal not found' });
+
+  const { data: w } = await supabaseAdmin.from('withdrawals').select('*').eq('id', withdrawal_id).single();
+  if (!w) return res.status(404).json({ error: 'Withdrawal not found' });
   if (w.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
 
   if (act === 'reject') {
-    // 1. Refund the user's balance
+    // Refund user balance
     const { data: wallet } = await supabaseAdmin.from('wallets').select('balance').eq('user_id', w.user_id).single();
     const newBalance = Number(wallet?.balance || 0) + Number(w.amount);
-    
-    await supabaseAdmin.from('wallets').update({ 
-      balance: newBalance, 
-      updated_at: new Date().toISOString() 
-    }).eq('user_id', w.user_id);
-
-    // 2. Mark withdrawal as rejected
-    await supabaseAdmin.from('withdrawals').update({ 
-      status: 'rejected', 
-      note: note || 'Rejected by Admin',
-      processed_at: new Date().toISOString() 
-    }).eq('id', w.id);
-
-    // 3. Update transaction status
-    await supabaseAdmin.from('transactions').update({ 
-      status: 'rejected', 
-      updated_at: new Date().toISOString() 
-    }).eq('reference', `wd_${w.id}`);
-    
+    await supabaseAdmin.from('wallets').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('user_id', w.user_id);
+    await supabaseAdmin.from('withdrawals').update({ status: 'rejected', note: note || 'Rejected by admin', processed_at: new Date().toISOString() }).eq('id', w.id);
+    await supabaseAdmin.from('transactions').update({ status: 'rejected' }).eq('reference', `wd_${w.id}`);
     return res.json({ ok: true, action: 'rejected' });
   }
 
   if (act === 'approve') {
-    // 1. Mark withdrawal as approved (Admin will pay manually via their bank)
-    await supabaseAdmin.from('withdrawals').update({ 
-      status: 'approved', 
-      note: note || 'Approved by Admin - Manual Payment',
-      processed_at: new Date().toISOString() 
+    // Manual approval - admin pays from their own bank
+    await supabaseAdmin.from('withdrawals').update({
+      status: 'approved',
+      note: note || 'Approved by admin - manual payment',
+      processed_at: new Date().toISOString()
     }).eq('id', w.id);
-
-    // 2. Update transaction status
-    await supabaseAdmin.from('transactions').update({ 
-      status: 'approved', 
-      updated_at: new Date().toISOString() 
-    }).eq('reference', `wd_${w.id}`);
-
-    return res.json({ 
-      ok: true, 
-      action: 'approved', 
-      message: 'Withdrawal approved. Admin will process payment manually.' 
-    });
+    await supabaseAdmin.from('transactions').update({ status: 'approved' }).eq('reference', `wd_${w.id}`);
+    return res.json({ ok: true, action: 'approved', message: 'Withdrawal approved. Process payment manually.' });
   }
+
+  return res.status(400).json({ error: 'Invalid action' });
 }
-      
+
 // ==========================================
 // USERS
 // ==========================================
@@ -232,11 +265,11 @@ async function adminGenerateGiftCode(req, res) {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + Number(expires_in_days || 30));
   const { error } = await supabaseAdmin.from('gift_codes').insert({
-    code, 
-    amount: Number(amount), 
-    max_uses: Number(max_uses), 
+    code,
+    amount: Number(amount),
+    max_uses: Number(max_uses),
     used_count: 0,
-    is_active: true, 
+    is_active: true,
     created_by: null,
     expires_at: expiresAt.toISOString()
   });
@@ -326,5 +359,13 @@ async function saveSupportLinks(req, res) {
   if (whatsapp) await supabaseAdmin.from('site_settings').upsert({ key: 'whatsapp_link', value: whatsapp });
   if (support) await supabaseAdmin.from('site_settings').upsert({ key: 'support_link', value: support });
   if (withdrawal_fee_percentage !== undefined) await supabaseAdmin.from('site_settings').upsert({ key: 'withdrawal_fee_percentage', value: String(withdrawal_fee_percentage) });
+  return res.json({ ok: true });
+}
+
+async function saveDepositBank(req, res) {
+  const { bank_name, account_number, account_name } = req.body;
+  if (bank_name) await supabaseAdmin.from('site_settings').upsert({ key: 'deposit_bank_name', value: bank_name });
+  if (account_number) await supabaseAdmin.from('site_settings').upsert({ key: 'deposit_account_number', value: account_number });
+  if (account_name) await supabaseAdmin.from('site_settings').upsert({ key: 'deposit_account_name', value: account_name });
   return res.json({ ok: true });
 }
