@@ -108,126 +108,63 @@ const TG_BANK_CODES = {
 };
 
 // ==========================================
-// PROCESS WITHDRAWAL (ENHANCED LOGGING)
+// PROCESS WITHDRAWAL (MANUAL ADMIN FLOW)
 // ==========================================
 async function processWithdrawal(req, res) {
   const { withdrawal_id, act, note } = req.body;
-  console.log('[ADMIN] Processing withdrawal request:', { withdrawal_id, act, note });
   
   const { data: w, error: wError } = await supabaseAdmin.from('withdrawals').select('*').eq('id', withdrawal_id).single();
   if (wError || !w) return res.status(404).json({ error: 'Withdrawal not found' });
-  
-  console.log('[ADMIN] Withdrawal data:', {
-    id: w.id, status: w.status, bank_name: w.bank_name, bank_id: w.bank_id,
-    account_number: w.account_number, account_name: w.account_name, amount: w.amount
-  });
-
   if (w.status !== 'pending') return res.status(400).json({ error: 'Already processed' });
 
   if (act === 'reject') {
+    // 1. Refund the user's balance
     const { data: wallet } = await supabaseAdmin.from('wallets').select('balance').eq('user_id', w.user_id).single();
-    await supabaseAdmin.from('wallets').update({ balance: Number(wallet.balance) + Number(w.amount) }).eq('user_id', w.user_id);
-    await supabaseAdmin.from('withdrawals').update({ status: 'rejected', note, processed_at: new Date().toISOString() }).eq('id', w.id);
-    await supabaseAdmin.from('transactions').update({ status: 'rejected' }).eq('reference', `wd_${w.id}`);
+    const newBalance = Number(wallet?.balance || 0) + Number(w.amount);
+    
+    await supabaseAdmin.from('wallets').update({ 
+      balance: newBalance, 
+      updated_at: new Date().toISOString() 
+    }).eq('user_id', w.user_id);
+
+    // 2. Mark withdrawal as rejected
+    await supabaseAdmin.from('withdrawals').update({ 
+      status: 'rejected', 
+      note: note || 'Rejected by Admin',
+      processed_at: new Date().toISOString() 
+    }).eq('id', w.id);
+
+    // 3. Update transaction status
+    await supabaseAdmin.from('transactions').update({ 
+      status: 'rejected', 
+      updated_at: new Date().toISOString() 
+    }).eq('reference', `wd_${w.id}`);
+    
     return res.json({ ok: true, action: 'rejected' });
   }
 
   if (act === 'approve') {
-    const bankId = TG_BANK_CODES[w.bank_name?.toLowerCase()] || w.bank_id;
-    console.log('[ADMIN] Resolved Bank ID:', bankId, 'from bank_name:', w.bank_name);
-    
-    if (!bankId) {
-      return res.status(400).json({ 
-        error: `Invalid bank code. Bank name: "${w.bank_name}". Supported: ${Object.keys(TG_BANK_CODES).join(', ')}` 
-      });
-    }
+    // 1. Mark withdrawal as approved (Admin will pay manually via their bank)
+    await supabaseAdmin.from('withdrawals').update({ 
+      status: 'approved', 
+      note: note || 'Approved by Admin - Manual Payment',
+      processed_at: new Date().toISOString() 
+    }).eq('id', w.id);
 
-    const { data: settings } = await supabaseAdmin.from('site_settings').select('key, value').eq('key', 'withdrawal_fee_percentage');
-    const feePercent = Number(settings?.[0]?.value || 0);
-    const feeAmount = Number(w.amount) * (feePercent / 100);
-    const netAmount = Number(w.amount) - feeAmount;
+    // 2. Update transaction status
+    await supabaseAdmin.from('transactions').update({ 
+      status: 'approved', 
+      updated_at: new Date().toISOString() 
+    }).eq('reference', `wd_${w.id}`);
 
-    // STRICT FIX: Ensure identifier is max 20 chars (Target Growth requirement)
-    const shortId = String(w.id).replace(/-/g, '').slice(0, 10);
-    const shortTime = Date.now().toString(36).slice(-4).toUpperCase();
-    const identifier = `TGW${shortId}${shortTime}`; // Max 3 + 10 + 4 = 17 chars
-
-    console.log('[ADMIN] Generated Identifier:', identifier, 'Length:', identifier.length);
-
-    // Atomically claim the pending withdrawal
-    const { data: claimed, error: claimError } = await supabaseAdmin
-      .from('withdrawals')
-      .update({
-        status: 'approved',
-        provider_identifier: identifier,
-        provider_status: 'initiating',
-        fee_amount: feeAmount,
-        net_amount: netAmount,
-        processed_at: new Date().toISOString()
-      })
-      .eq('id', w.id)
-      .eq('status', 'pending')
-      .select('id')
-      .maybeSingle();
-
-    if (claimError) {
-      console.error('[ADMIN] Withdrawal claim failed:', claimError);
-      return res.status(500).json({ error: 'Unable to approve withdrawal' });
-    }
-
-    if (!claimed) {
-      return res.status(409).json({ error: 'Withdrawal is already being processed or has already been approved' });
-    }
-
-    try {
-      const transferPayload = {
-        identifier, 
-        amount: netAmount, 
-        bankId, 
-        recipient: w.account_number,
-        accountName: w.account_name, 
-        ipnUrl: `https://rms888.vercel.app/api/webhooks/targetgrowths`, 
-        customerEmail: w.customer_email || 'admin@rms.com'
-      };
-      console.log('[ADMIN] Calling initiateTransfer with payload:', transferPayload);
-
-      const provider = await initiateTransfer(transferPayload);
-      console.log('[ADMIN] initiateTransfer response:', provider);
-
-      const { error: providerUpdateError } = await supabaseAdmin
-        .from('withdrawals')
-        .update({
-          provider_reference: provider?.transaction_ref || provider?.ref_trx,
-          provider_status: 'provider_pending',
-          provider_response: provider
-        })
-        .eq('id', w.id)
-        .eq('status', 'approved');
-
-      if (providerUpdateError) {
-        console.error('[ADMIN] Withdrawal provider result save failed:', providerUpdateError);
-        return res.status(500).json({ error: 'Gateway accepted the transfer, but its response could not be saved.' });
-      }
-
-      await supabaseAdmin.from('transactions').update({ status: 'approved' }).eq('reference', `wd_${w.id}`);
-
-      return res.json({ ok: true, action: 'approved', status: 'provider_pending', netAmount });
-    } catch (e) {
-      console.error('[ADMIN] Gateway transfer attempt failed:', e);
-      await supabaseAdmin.from('withdrawals').update({
-        status: 'approved',
-        provider_status: 'gateway_error',
-        provider_response: { error: e.message, details: e.providerResponse },
-        processed_at: new Date().toISOString()
-      }).eq('id', w.id).eq('status', 'approved');
-
-      return res.status(502).json({
-        error: 'Gateway transfer attempt failed. Error: ' + e.message
-      });
-    }
+    return res.json({ 
+      ok: true, 
+      action: 'approved', 
+      message: 'Withdrawal approved. Admin will process payment manually.' 
+    });
   }
 }
-
+      
 // ==========================================
 // USERS
 // ==========================================
