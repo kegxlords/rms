@@ -391,9 +391,8 @@ async function createWithdrawal(req, res) {
   }
     }
 // ==========================================
-// TARGET GROWTH WITHDRAWAL
+// MANUAL WITHDRAWAL REQUEST
 // ==========================================
-
 async function initiateTargetGrowthWithdrawal(req, res) {
   const user = await verifyUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -401,29 +400,60 @@ async function initiateTargetGrowthWithdrawal(req, res) {
   const { amount, bank_name, account_number, account_name } = req.body;
   const numAmount = Number(amount);
 
-  const bankId = getTargetGrowthBankCode(bank_name);
-  if (!bankId) return res.status(400).json({ error: `Bank "${bank_name}" is not supported for Target Growth payouts.` });
+  // Check VIP eligibility
+  const { data: profile } = await supabaseAdmin.from('profiles').select('vip_level').eq('id', user.id).single();
+  const tier = profile?.vip_level || 'newbie';
+  if (tier === 'newbie' || tier === 'M0') {
+    return res.status(400).json({ error: 'Upgrade to M1 or higher to withdraw.' });
+  }
 
+  // Check balance
   const { data: wallet } = await supabaseAdmin.from('wallets').select('balance').eq('user_id', user.id).single();
   if (!wallet) return res.status(400).json({ error: 'Wallet not found.' });
   if (numAmount > wallet.balance) return res.status(400).json({ error: 'Insufficient available balance.' });
 
-  const reference = `TG_WD_${user.id.replace(/-/g, '').slice(0, 8)}_${Date.now()}`;
+  const reference = `WD_${user.id.replace(/-/g, '').slice(0, 8)}_${Date.now()}`;
   
+  // Create pending withdrawal record
   const { data: wd, error: wdErr } = await supabaseAdmin.from('withdrawals').insert({
-    user_id: user.id, amount: numAmount, net_amount: numAmount, bank_name, account_number, account_name, reference,
-    status: 'pending', method: 'targetgrowths', provider: 'targetgrowths', provider_status: 'awaiting_admin_approval', created_at: new Date().toISOString()
+    user_id: user.id, 
+    amount: numAmount, 
+    net_amount: numAmount, 
+    bank_name, 
+    account_number, 
+    account_name, 
+    reference,
+    status: 'pending', 
+    method: 'manual', 
+    provider: 'manual', 
+    provider_status: 'awaiting_admin_approval', 
+    created_at: new Date().toISOString()
   }).select().single();
 
   if (wdErr) return res.status(500).json({ error: wdErr.message });
 
-  await supabaseAdmin.from('wallets').update({ balance: wallet.balance - numAmount, updated_at: new Date().toISOString() }).eq('user_id', user.id);
+  // Deduct balance immediately to prevent double-spending
+  await supabaseAdmin.from('wallets').update({ 
+    balance: wallet.balance - numAmount, 
+    updated_at: new Date().toISOString() 
+  }).eq('user_id', user.id);
 
+  // Record pending transaction
   await supabaseAdmin.from('transactions').insert({
-    user_id: user.id, type: 'withdrawal', amount: numAmount, status: 'pending', reference: `wd_${wd.id}`, description: `Pending Target Growth Withdrawal to ${account_name}`
+    user_id: user.id, 
+    type: 'withdrawal', 
+    amount: numAmount, 
+    status: 'pending', 
+    reference: `wd_${wd.id}`, 
+    description: `Manual Withdrawal to ${account_name}`,
+    created_at: new Date().toISOString()
   });
 
-  return res.status(201).json({ ok: true, message: 'Withdrawal request submitted for admin approval.', withdrawal: wd });
+  return res.status(201).json({ 
+    ok: true, 
+    message: 'Withdrawal request submitted for manual admin approval.', 
+    withdrawal: wd 
+  });
 }
 
 // ==========================================
